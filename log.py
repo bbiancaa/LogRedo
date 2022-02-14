@@ -12,9 +12,23 @@ def process_commands(cursor, values):
     checkpoint = {
 
     }
-    for value in values:
+    for key, value in enumerate(values):
         if 'Start CKPT' in value:
             checkpoint[beautiful_str(value, 'Start CKPT')] = []
+            for start_ckpt in values[key+1:]:
+                print(start_ckpt)
+                if 'commit' in start_ckpt:
+                    position = beautiful_str(start_ckpt, 'commit')
+                    for commit in reversed(start[position]):
+                        id, column, val = commit.split(',')
+                        cursor.execute(f"update at2 set {column}={val} where id={id};")
+                        start[position].pop()
+                elif 'End CKPT' in start_ckpt:
+                    break 
+                else:
+                    position = beautiful_str(start_ckpt, '').split(',')[0]
+                    start[position].insert(0, beautiful_str(start_ckpt, position+','))
+
         elif 'start' in value:
             start[beautiful_str(value, 'start')] = []
         elif 'commit' in value:
@@ -22,7 +36,7 @@ def process_commands(cursor, values):
             for commit in reversed(start[position]):
                 id, column, val = commit.split(',')
                 cursor.execute(f"update at2 set {column}={val} where id={id};")
-                start[position].pop(0)
+                start[position].pop()
 
         elif 'End CKPT' in value:
             pass
@@ -30,10 +44,12 @@ def process_commands(cursor, values):
             pass
         else:
             position = beautiful_str(value, '').split(',')[0]
-            start[position].append(beautiful_str(value, position+','))
+            start[position].insert(0, beautiful_str(value, position+','))
 
     print(start, checkpoint)
-    
+    cursor.execute("select * from at2")
+    print(cursor.fetchall())
+
 def read_file(cursor):
     commands = []
     with open("./entrada.txt", "r") as file:
