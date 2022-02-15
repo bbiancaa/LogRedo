@@ -6,49 +6,57 @@ def beautiful_str(str, value):
 
 
 def process_commands(cursor, values):
-    start = {
+    controller = {
 
     }
-    checkpoint = {
+    redo = {
 
     }
     for key, value in enumerate(values):
         if 'Start CKPT' in value:
-            checkpoint[beautiful_str(value, 'Start CKPT')] = []
+            for trasiction in beautiful_str(value, 'Start CKPT(').replace(')', '').split(','):
+                redo[trasiction] = False
             for start_ckpt in values[key+1:]:
-                print(start_ckpt)
-                if 'commit' in start_ckpt:
+                if 'Start CKPT' in start_ckpt:
+                    break
+                elif 'commit' in start_ckpt:
                     position = beautiful_str(start_ckpt, 'commit')
-                    for commit in reversed(start[position]):
+                    for commit in reversed(controller[position]):
                         id, column, val = commit.split(',')
-                        cursor.execute(f"update at2 set {column}={val} where id={id};")
-                        start[position].pop()
+                        cursor.execute(f'select {column} from at2 where id={id}')
+                        result = cursor.fetchall()
+                        if result[0][0] != val:
+                            redo[position] = True
+                            cursor.execute(f"update at2 set {column}={val} where id={id};")
+                        controller[position].pop()
                 elif 'End CKPT' in start_ckpt:
-                    break 
+                    continue 
+                elif 'crash' in start_ckpt:
+                    return redo
+                elif 'start' in start_ckpt:
+                    redo[beautiful_str(start_ckpt, 'start')] = False
+                    controller[beautiful_str(start_ckpt, 'start')] = []
                 else:
                     position = beautiful_str(start_ckpt, '').split(',')[0]
-                    start[position].insert(0, beautiful_str(start_ckpt, position+','))
+                    controller[position].insert(0, beautiful_str(start_ckpt, position+','))
 
         elif 'start' in value:
-            start[beautiful_str(value, 'start')] = []
+            controller[beautiful_str(value, 'start')] = []
         elif 'commit' in value:
             position = beautiful_str(value, 'commit')
-            for commit in reversed(start[position]):
+            for commit in reversed(controller[position]):
                 id, column, val = commit.split(',')
                 cursor.execute(f"update at2 set {column}={val} where id={id};")
-                start[position].pop()
-
-        elif 'End CKPT' in value:
-            pass
+                controller[position].pop()
         elif 'crash' in value:
-            pass
+            return redo
+        elif 'End CKPT' in value:
+            continue 
         else:
             position = beautiful_str(value, '').split(',')[0]
-            start[position].insert(0, beautiful_str(value, position+','))
+            controller[position].insert(0, beautiful_str(value, position+','))
 
-    print(start, checkpoint)
-    cursor.execute("select * from at2")
-    print(cursor.fetchall())
+    return redo
 
 def read_file(cursor):
     commands = []
@@ -62,13 +70,8 @@ def read_file(cursor):
             if line.startswith("<") and line.endswith(">"):
                 commands.append(line)
             else:
-                print('initial line: \t\t', line.replace(",", " ").replace("=", " ").split(" "))
                 column, id, value = line.replace(",", " ").replace("=", " ").split(" ")
-                cursor.execute("select * from at2")
-                print('before update \t\t', cursor.fetchall())
                 cursor.execute("update at2 set %s=%s where id=%s;" % (column, value, id))
-                cursor.execute("select * from at2")
-                print('after update \t\t', cursor.fetchall())
 
     return commands
 
@@ -79,7 +82,15 @@ def main():
     conn.create_table(cursor)
 
     commands = read_file(cursor)
-    process_commands(cursor, commands)
+    redos = process_commands(cursor, commands)
+    for ckpt in redos:
+        if redos[ckpt]:
+            print(f'Transação {ckpt} realizou Redo')
+            continue
+        print(f'Transação {ckpt} não realizou Redo')
+    cursor.execute("select * from at2")
+    for val in reversed(cursor.fetchall()):
+        print(f"ID: {val[0]}\t A: {val[1]}\t B: {val[2]}")
 
 
 if __name__ == '__main__':
