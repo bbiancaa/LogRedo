@@ -1,34 +1,34 @@
 import conn
 
 
-def beautiful_str(str, value):
-    return str.replace('<', '').replace('>', '').replace(value, '').strip()
+def beautiful_str(str, line):
+    return str.replace('<', '').replace('>', '').replace(line, '').strip()
 
 
-def process_commands(cursor, values):
+def process_commands(cursor, lines):
     controller = {
 
     }
     redo = {
 
     }
-    for key, value in enumerate(values):
-        if 'Start CKPT' in value:
-            for trasiction in beautiful_str(value, 'Start CKPT(').replace(')', '').split(','):
+    for key, line in enumerate(lines):
+        if 'Start CKPT' in line:
+            for trasiction in beautiful_str(line, 'Start CKPT(').replace(')', '').split(','):
                 redo[trasiction] = False
-            for start_ckpt in values[key+1:]:
+            for start_ckpt in lines[key+1:]:
                 if 'Start CKPT' in start_ckpt:
                     break
                 elif 'commit' in start_ckpt:
-                    position = beautiful_str(start_ckpt, 'commit')
-                    for commit in reversed(controller[position]):
+                    id_transaction = beautiful_str(start_ckpt, 'commit')
+                    for commit in reversed(controller[id_transaction]):
                         id, column, val = commit.split(',')
                         cursor.execute(f'select {column} from at2 where id={id}')
                         result = cursor.fetchall()
                         if result[0][0] != val:
-                            redo[position] = True
+                            redo[id_transaction] = True
                             cursor.execute(f"update at2 set {column}={val} where id={id};")
-                        controller[position].pop()
+                        controller[id_transaction].pop()
                 elif 'End CKPT' in start_ckpt:
                     continue 
                 elif 'crash' in start_ckpt:
@@ -37,24 +37,24 @@ def process_commands(cursor, values):
                     redo[beautiful_str(start_ckpt, 'start')] = False
                     controller[beautiful_str(start_ckpt, 'start')] = []
                 else:
-                    position = beautiful_str(start_ckpt, '').split(',')[0]
-                    controller[position].insert(0, beautiful_str(start_ckpt, position+','))
+                    id_transaction = beautiful_str(start_ckpt, '').split(',')[0]
+                    controller[id_transaction].insert(0, beautiful_str(start_ckpt, id_transaction+','))
 
-        elif 'start' in value:
-            controller[beautiful_str(value, 'start')] = []
-        elif 'commit' in value:
-            position = beautiful_str(value, 'commit')
-            for commit in reversed(controller[position]):
+        elif 'start' in line:
+            controller[beautiful_str(line, 'start')] = [] 
+        elif 'commit' in line:
+            id_transaction = beautiful_str(line, 'commit') 
+            for commit in reversed(controller[id_transaction]): 
                 id, column, val = commit.split(',')
                 cursor.execute(f"update at2 set {column}={val} where id={id};")
-                controller[position].pop()
-        elif 'crash' in value:
+                controller[id_transaction].pop()
+        elif 'crash' in line:
             return redo
-        elif 'End CKPT' in value:
+        elif 'End CKPT' in line:
             continue 
         else:
-            position = beautiful_str(value, '').split(',')[0]
-            controller[position].insert(0, beautiful_str(value, position+','))
+            id_transaction = beautiful_str(line, '').split(',')[0]
+            controller[id_transaction].insert(0, beautiful_str(line, id_transaction+','))
 
     return redo
 
@@ -70,8 +70,8 @@ def read_file(cursor):
             if line.startswith("<") and line.endswith(">"):
                 commands.append(line)
             else:
-                column, id, value = line.replace(",", " ").replace("=", " ").split(" ")
-                cursor.execute("update at2 set %s=%s where id=%s;" % (column, value, id))
+                column, id, line = line.replace(",", " ").replace("=", " ").split(" ")
+                cursor.execute("update at2 set %s=%s where id=%s;" % (column, line, id))
 
     return commands
 
